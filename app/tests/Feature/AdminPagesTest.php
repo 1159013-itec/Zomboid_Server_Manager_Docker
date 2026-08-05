@@ -13,6 +13,7 @@ use App\Services\SandboxLuaParser;
 use App\Services\ServerIniParser;
 use App\Services\WhitelistManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
 
@@ -691,4 +692,23 @@ it('blocks players from player map page', function () {
     $player = User::factory()->create(['role' => \App\Enums\UserRole::Player]);
 
     $this->actingAs($player)->get('/admin/players/map')->assertForbidden();
+});
+
+it('proxies remote map tiles when local tiles are missing', function () {
+    config()->set('zomboid.map.tiles_path', sys_get_temp_dir().'/pz-map-missing-'.uniqid('', true));
+    config()->set('zomboid.map.proxy_url', 'https://map.projectzomboid.com/maps/42.20.0/base/layer0_files/{z}/{x}_{y}.jpg');
+
+    Http::fake([
+        'https://map.projectzomboid.com/maps/42.20.0/base/layer0_files/13/1_0.jpg' => Http::response('tile-bytes', 200, [
+            'Content-Type' => 'image/jpeg',
+        ]),
+    ]);
+
+    $response = $this->actingAs(adminUser())->get('/admin/map-tiles/13/1_0');
+
+    $response->assertOk();
+    $response->assertHeader('Content-Type', 'image/jpeg');
+    $response->assertSee('tile-bytes', false);
+
+    Http::assertSentCount(1);
 });

@@ -3,6 +3,9 @@ import 'leaflet/dist/leaflet.css';
 import { useCallback, useEffect, useRef } from 'react';
 import type { DziInfo, MapConfig, PlayerMarker } from '@/types/server';
 
+const TRANSPARENT_TILE_DATA_URL =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
 type MarkerAction = 'kick' | 'ban' | 'access' | 'inventory';
 
 export type ZoneOverlay = {
@@ -48,6 +51,7 @@ type PzMapProps = {
     eventMarkers?: EventMarker[];
     onEventMarkerClick?: (marker: EventMarker) => void;
     onMapReady?: (map: L.Map) => void;
+    onInteractionChange?: (interacting: boolean) => void;
 };
 
 const statusColors: Record<PlayerMarker['status'], string> = {
@@ -171,7 +175,6 @@ function createPzCRS(dzi: DziInfo): L.CRS {
                 const sy = (pyAdj - pxAdj) / 2;
                 return L.latLng(-sy, sx);
             },
-            bounds: L.bounds([0, 0], [dzi.width, dzi.height]),
         };
 
         return L.Util.extend({}, L.CRS, {
@@ -179,7 +182,8 @@ function createPzCRS(dzi: DziInfo): L.CRS {
             transformation: new L.Transformation(scale, 0, scale, 0),
             scale(zoom: number) { return Math.pow(2, zoom); },
             zoom(s: number) { return Math.log(s) / Math.LN2; },
-            infinite: false,
+            // Keep panning smooth without CRS center snapping.
+            infinite: true,
         }) as unknown as L.CRS;
     }
 
@@ -195,9 +199,78 @@ function createPzCRS(dzi: DziInfo): L.CRS {
     });
 }
 
+function getDziBounds(dzi: DziInfo): L.LatLngBounds {
+    if (dzi.isometric) {
+        const halfSqr = dzi.sqr / 2;
+        const quarterSqr = dzi.sqr / 4;
+        const yOffset = dzi.y0 + quarterSqr;
+
+        const pixelToLatLng = (px: number, py: number): L.LatLng => {
+            const pxAdj = (px - dzi.x0) / halfSqr;
+            const pyAdj = (py - yOffset) / quarterSqr;
+            const sx = (pxAdj + pyAdj) / 2;
+            const sy = (pyAdj - pxAdj) / 2;
+            return L.latLng(-sy, sx);
+        };
+
+        // DZI bounds are defined in the full image pixel space [0..width, 0..height].
+        // Using x0/y0 as the origin here shifts bounds and can pin the view to one side.
+        return L.latLngBounds([
+            pixelToLatLng(0, 0),
+            pixelToLatLng(dzi.width, 0),
+            pixelToLatLng(0, dzi.height),
+            pixelToLatLng(dzi.width, dzi.height),
+        ]);
+    }
+
+    return L.latLngBounds(
+        L.latLng(0, 0),
+        L.latLng(-dzi.height / dzi.sqr, dzi.width / dzi.sqr),
+    );
+}
+
 /** Convert a Leaflet LatLng to PZ game coordinates. */
 function latLngToPz(ll: L.LatLng): { x: number; y: number } {
     return { x: ll.lng, y: -ll.lat };
+}
+
+type StoredMapView = {
+    lat: number;
+    lng: number;
+    zoom: number;
+};
+
+function getMapViewStorageKey(): string {
+    return `pz-map:view:${window.location.pathname}`;
+}
+
+function loadStoredMapView(): StoredMapView | null {
+    try {
+        const raw = window.sessionStorage.getItem(getMapViewStorageKey());
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as Partial<StoredMapView>;
+        if (
+            typeof parsed.lat !== 'number'
+            || typeof parsed.lng !== 'number'
+            || typeof parsed.zoom !== 'number'
+            || Number.isNaN(parsed.lat)
+            || Number.isNaN(parsed.lng)
+            || Number.isNaN(parsed.zoom)
+        ) {
+            return null;
+        }
+        return { lat: parsed.lat, lng: parsed.lng, zoom: parsed.zoom };
+    } catch {
+        return null;
+    }
+}
+
+function saveStoredMapView(view: StoredMapView): void {
+    try {
+        window.sessionStorage.setItem(getMapViewStorageKey(), JSON.stringify(view));
+    } catch {
+        // Ignore storage failures (private mode, quota, etc.)
+    }
 }
 
 const eventTypeColors: Record<string, string> = {
@@ -223,6 +296,7 @@ export default function PzMap({
     eventMarkers,
     onEventMarkerClick,
     onMapReady,
+    onInteractionChange,
 }: PzMapProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<L.Map | null>(null);
@@ -234,6 +308,7 @@ export default function PzMap({
         startLatLng: L.LatLng | null;
         previewRect: L.Rectangle | null;
     }>({ drawing: false, startLatLng: null, previewRect: null });
+    const interactionTimeoutRef = useRef<number | null>(null);
 
     // Stable refs for callbacks so event handlers always see latest values
     const onZoneDrawnRef = useRef(onZoneDrawn);
@@ -263,9 +338,7 @@ export default function PzMap({
             attributionControl: false,
         });
 
-        // PZ coords: Leaflet uses [lat, lng] = [-y, x]
-        const center = L.latLng(-mapConfig.center.y, mapConfig.center.x);
-        map.setView(center, mapConfig.defaultZoom);
+        const storedView = loadStoredMapView();
 
         if (hasTiles && mapConfig.tileUrl && dzi) {
             createDziTileLayer(mapConfig.tileUrl, {
@@ -274,10 +347,43 @@ export default function PzMap({
                 maxZoom: mapConfig.maxZoom,
                 maxNativeZoom,
                 noWrap: true,
+                errorTileUrl: TRANSPARENT_TILE_DATA_URL,
             }).addTo(map);
+
+            const bounds = getDziBounds(dzi);
+
+            const minBoundsZoom = map.getBoundsZoom(bounds, false);
+            map.setMinZoom(minBoundsZoom);
+            const storedLatLng = storedView ? L.latLng(storedView.lat, storedView.lng) : null;
+
+            if (storedLatLng) {
+                const restoredZoom = Math.max(minBoundsZoom, Math.min(storedView?.zoom ?? mapConfig.defaultZoom, mapConfig.maxZoom));
+                map.setView(storedLatLng, restoredZoom, { animate: false });
+            } else {
+                map.fitBounds(bounds, { animate: false });
+            }
+
+            // Avoid drag snap-back on custom CRS: keep free pan in interactive mode.
+            map.options.maxBoundsViscosity = 0;
         } else if (!hasTiles) {
+            // PZ coords: Leaflet uses [lat, lng] = [-y, x]
+            const center = L.latLng(-mapConfig.center.y, mapConfig.center.x);
+            if (storedView) {
+                const restoredZoom = Math.max(mapConfig.minZoom, Math.min(storedView.zoom, mapConfig.maxZoom));
+                map.setView(L.latLng(storedView.lat, storedView.lng), restoredZoom, { animate: false });
+            } else {
+                map.setView(center, mapConfig.defaultZoom);
+            }
             addCoordinateGrid(map);
         }
+
+        const persistView = () => {
+            const c = map.getCenter();
+            saveStoredMapView({ lat: c.lat, lng: c.lng, zoom: map.getZoom() });
+        };
+
+        map.on('moveend', persistView);
+        map.on('zoomend', persistView);
 
         const markersLayer = L.layerGroup().addTo(map);
         markersLayerRef.current = markersLayer;
@@ -291,6 +397,29 @@ export default function PzMap({
         mapRef.current = map;
 
         onMapReady?.(map);
+
+        const markInteracting = () => {
+            if (interactionTimeoutRef.current !== null) {
+                window.clearTimeout(interactionTimeoutRef.current);
+                interactionTimeoutRef.current = null;
+            }
+            onInteractionChange?.(true);
+        };
+
+        const markInteractionIdle = () => {
+            if (interactionTimeoutRef.current !== null) {
+                window.clearTimeout(interactionTimeoutRef.current);
+            }
+            interactionTimeoutRef.current = window.setTimeout(() => {
+                onInteractionChange?.(false);
+                interactionTimeoutRef.current = null;
+            }, 900);
+        };
+
+        map.on('movestart', markInteracting);
+        map.on('zoomstart', markInteracting);
+        map.on('moveend', markInteractionIdle);
+        map.on('zoomend', markInteractionIdle);
 
         // Drawing event handlers
         map.on('mousedown', (e: L.LeafletMouseEvent) => {
@@ -344,6 +473,11 @@ export default function PzMap({
         });
 
         return () => {
+            if (interactionTimeoutRef.current !== null) {
+                window.clearTimeout(interactionTimeoutRef.current);
+                interactionTimeoutRef.current = null;
+            }
+            onInteractionChange?.(false);
             map.remove();
             mapRef.current = null;
             markersLayerRef.current = null;

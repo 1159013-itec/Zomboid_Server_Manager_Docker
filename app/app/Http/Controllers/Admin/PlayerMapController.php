@@ -10,9 +10,11 @@ use App\Services\PlayersDbReader;
 use App\Services\SafeZoneManager;
 use App\Services\ServerStatusResolver;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Http;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\Process\Process;
 
 class PlayerMapController extends Controller
 {
@@ -140,11 +142,13 @@ class PlayerMapController extends Controller
         }
 
         if ($filePath === null) {
-            // Return transparent 1x1 PNG for missing tiles (avoids broken-image placeholders in Leaflet)
-            return response(base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), 200, [
-                'Content-Type' => 'image/png',
-                'Cache-Control' => 'public, max-age=86400',
-            ]);
+            $proxiedTile = $this->proxyRemoteTile($level, $baseTile);
+
+            if ($proxiedTile !== null) {
+                return $proxiedTile;
+            }
+
+            return $this->missingTileResponse();
         }
 
         // Prevent path traversal
@@ -159,5 +163,132 @@ class PlayerMapController extends Controller
             'Cache-Control' => 'public, max-age=86400',
             'Content-Type' => $contentType,
         ]);
+    }
+
+    private function proxyRemoteTile(string $level, string $baseTile): ?Response
+    {
+        $proxyUrl = (string) config('zomboid.map.proxy_url', '');
+
+        if ($proxyUrl === '') {
+            return null;
+        }
+
+        $parts = explode('_', $baseTile, 2);
+
+        if (count($parts) !== 2) {
+            return null;
+        }
+
+        $remoteUrl = strtr($proxyUrl, [
+            '{z}' => $level,
+            '{x}' => $parts[0],
+            '{y}' => $parts[1],
+        ]);
+
+        try {
+            $remoteResponse = Http::withHeaders([
+                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                'Referer' => 'https://map.projectzomboid.com/',
+                'Accept' => 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+            ])->timeout(10)->retry(2, 250)->get($remoteUrl);
+
+            if ($remoteResponse->successful()) {
+                $contentType = strtolower((string) $remoteResponse->header('Content-Type', ''));
+
+                if (str_starts_with($contentType, 'image/')) {
+                    return response($remoteResponse->body(), 200, [
+                        'Content-Type' => $contentType,
+                        'Cache-Control' => 'public, max-age=86400',
+                    ]);
+                }
+            }
+        } catch (\Throwable) {
+            // Fall through to the curl fallback below.
+        }
+
+        $fallbackTile = $this->fetchRemoteTileWithCurl($remoteUrl);
+
+        if ($fallbackTile === null) {
+            return null;
+        }
+
+        return response($fallbackTile['body'], 200, [
+            'Content-Type' => $fallbackTile['contentType'],
+            'Cache-Control' => 'public, max-age=86400',
+        ]);
+    }
+
+    private function missingTileResponse(): Response
+    {
+        // Transparent 1x1 PNG avoids broken-image placeholders in Leaflet.
+        return response(base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), 200, [
+            'Content-Type' => 'image/png',
+            'Cache-Control' => 'no-store, max-age=0',
+        ]);
+    }
+
+    /**
+     * Fetch a remote tile through curl when the framework HTTP client is blocked.
+     *
+     * @return array{contentType: string, body: string}|null
+     */
+    private function fetchRemoteTileWithCurl(string $remoteUrl): ?array
+    {
+        $headersFile = tempnam(sys_get_temp_dir(), 'pzmap_headers_');
+        $bodyFile = tempnam(sys_get_temp_dir(), 'pzmap_body_');
+
+        if ($headersFile === false || $bodyFile === false) {
+            if ($headersFile !== false) {
+                @unlink($headersFile);
+            }
+            if ($bodyFile !== false) {
+                @unlink($bodyFile);
+            }
+
+            return null;
+        }
+
+        $process = new Process([
+            '/usr/bin/curl',
+            '-sS',
+            '-L',
+            '-A',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+            '-e',
+            'https://map.projectzomboid.com/',
+            '-D',
+            $headersFile,
+            '-o',
+            $bodyFile,
+            $remoteUrl,
+        ]);
+
+        $process->setTimeout(15);
+        $process->run();
+
+        $headers = is_file($headersFile) ? file_get_contents($headersFile) : false;
+        $body = is_file($bodyFile) ? file_get_contents($bodyFile) : false;
+
+        @unlink($headersFile);
+        @unlink($bodyFile);
+
+        if (! $process->isSuccessful() || $headers === false || $body === false || $body === '') {
+            return null;
+        }
+
+        if (! preg_match('/^Content-Type:\s*([^\r\n]+)/im', $headers, $matches)) {
+            return null;
+        }
+
+        $contentType = strtolower(trim($matches[1]));
+
+        if (! str_starts_with($contentType, 'image/')) {
+            return null;
+        }
+
+        return [
+            'contentType' => $contentType,
+            'body' => $body,
+        ];
     }
 }

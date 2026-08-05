@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Zomboid Manager — PowerShell equivalent of Makefile for Windows.
+    Zomboid Manager - PowerShell equivalent of Makefile for Windows.
 .DESCRIPTION
     Run: .\make.ps1 <command>
     Example: .\make.ps1 up
@@ -160,7 +160,7 @@ function Do-Stop {
 }
 
 function Do-Logs {
-    # Don't use Invoke-Compose — Ctrl+C exit code is non-zero and that's OK
+    # Don't use Invoke-Compose - Ctrl+C exit code is non-zero and that's OK
     $allArgs = $script:ComposeArgs + @("logs", "-f")
     Write-Host "  > docker $($allArgs -join ' ')" -ForegroundColor DarkGray
     & docker @allArgs
@@ -470,7 +470,7 @@ function Do-Help {
     Write-Host "    .\make.ps1 ps               List running containers"
     Write-Host "    .\make.ps1 pull             Pull latest images"
     Write-Host ""
-    Write-Host "  Firewall (Windows Firewall — requires Administrator):" -ForegroundColor White
+    Write-Host "  Firewall (Windows Firewall - requires Administrator):" -ForegroundColor White
     Write-Host "    .\make.ps1 expose           Open game ports (UDP)"
     Write-Host "    .\make.ps1 hide             Close game ports (UDP)"
     Write-Host "    .\make.ps1 admin-expose     Open admin HTTPS ports"

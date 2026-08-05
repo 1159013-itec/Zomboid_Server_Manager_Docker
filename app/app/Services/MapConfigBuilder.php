@@ -5,21 +5,25 @@ namespace App\Services;
 class MapConfigBuilder
 {
     /**
-     * Build map configuration, preferring local tiles then falling back to proxy.
+     * Build map configuration.
      *
-     * @return array{tileUrl: string|null, tileSize: int, minZoom: int, maxZoom: int, defaultZoom: int, center: array{x: int, y: int}, dzi: array|null}
+     * @return array{tileUrl: string, tileSize: int, minZoom: int, maxZoom: int, defaultZoom: int, center: array{x: int, y: int}, dzi: array|null}
      */
     public function build(): array
     {
         $localDzi = $this->getLocalDziConfig();
+        $tileUrl = url('/admin/map-tiles/{z}/{x}_{y}?v=42.20.0');
+        $minZoom = (int) config('zomboid.map.min_zoom');
+        $maxZoom = (int) config('zomboid.map.max_zoom');
+        $defaultZoom = (int) config('zomboid.map.default_zoom');
 
         if ($localDzi) {
             return [
-                'tileUrl' => url('/admin/map-tiles/{z}/{x}_{y}'),
+                'tileUrl' => $tileUrl,
                 'tileSize' => config('zomboid.map.tile_size'),
-                'minZoom' => config('zomboid.map.min_zoom'),
-                'maxZoom' => config('zomboid.map.max_zoom'),
-                'defaultZoom' => config('zomboid.map.default_zoom'),
+                'minZoom' => $minZoom,
+                'maxZoom' => $maxZoom,
+                'defaultZoom' => max($minZoom, min($defaultZoom, $maxZoom)),
                 'center' => [
                     'x' => config('zomboid.map.center_x'),
                     'y' => config('zomboid.map.center_y'),
@@ -29,6 +33,12 @@ class MapConfigBuilder
         }
 
         // Fall back to proxy tiles from map.projectzomboid.com
+        // The public proxy layer currently provides only a limited zoom range,
+        // so we clamp UI zoom to prevent broken placeholder tiles on zoom-in.
+        $proxyMaxZoom = (int) config('zomboid.map.proxy_max_zoom', $minZoom);
+        $effectiveMaxZoom = min($maxZoom, $proxyMaxZoom);
+        $effectiveMinZoom = min($minZoom, $effectiveMaxZoom);
+
         $proxyDzi = config('zomboid.map.proxy_dzi');
         $w = $proxyDzi['width'];
         $h = $proxyDzi['height'];
@@ -36,11 +46,11 @@ class MapConfigBuilder
         $maxNativeZoom = (int) ceil(log(max($w, $h), 2));
 
         return [
-            'tileUrl' => config('zomboid.map.proxy_url'),
+            'tileUrl' => $tileUrl,
             'tileSize' => config('zomboid.map.proxy_tile_size'),
-            'minZoom' => config('zomboid.map.min_zoom'),
-            'maxZoom' => config('zomboid.map.max_zoom'),
-            'defaultZoom' => config('zomboid.map.default_zoom'),
+            'minZoom' => $effectiveMinZoom,
+            'maxZoom' => $effectiveMaxZoom,
+            'defaultZoom' => max($effectiveMinZoom, min($defaultZoom, $effectiveMaxZoom)),
             'center' => [
                 'x' => config('zomboid.map.center_x'),
                 'y' => config('zomboid.map.center_y'),

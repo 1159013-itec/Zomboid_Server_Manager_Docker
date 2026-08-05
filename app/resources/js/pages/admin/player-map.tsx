@@ -1,6 +1,6 @@
-import { Head, router, usePoll } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import { AlertTriangle, Circle, Loader2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PlayerActionDialogs from '@/components/player-action-dialogs';
 import PzMap from '@/components/pz-map';
 import { useTranslation } from '@/hooks/use-translation';
@@ -47,7 +47,21 @@ const ZONE_COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec
 
 export default function PlayerMap({ markers, onlineCount, serverStatus, mapConfig, hasTiles, tileProgress, safeZones }: Props) {
     const { t } = useTranslation();
-    usePoll(5000, { only: ['markers', 'onlineCount', 'serverStatus', 'hasTiles', 'tileProgress', 'safeZones'] });
+    const [isMapInteracting, setIsMapInteracting] = useState(false);
+
+    useEffect(() => {
+        if (isMapInteracting) return;
+
+        const timer = window.setInterval(() => {
+            router.reload({
+                only: ['markers', 'onlineCount', 'serverStatus', 'hasTiles', 'tileProgress', 'safeZones'],
+                preserveState: true,
+                preserveScroll: true,
+            });
+        }, 5000);
+
+        return () => window.clearInterval(timer);
+    }, [isMapInteracting]);
 
     const zoneOverlays: ZoneOverlay[] = useMemo(
         () => safeZones.map((zone, i) => ({ ...zone, color: ZONE_COLORS[i % ZONE_COLORS.length] })),
@@ -166,6 +180,7 @@ export default function PlayerMap({ markers, onlineCount, serverStatus, mapConfi
                             hasTiles={hasTiles}
                             onMarkerAction={handleMarkerAction}
                             zones={zoneOverlays}
+                            onInteractionChange={setIsMapInteracting}
                             className="rounded-xl"
                         />
                     </CardContent>
