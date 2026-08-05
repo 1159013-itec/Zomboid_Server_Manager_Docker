@@ -16,7 +16,7 @@ services:
       - net.ipv6.conf.default.disable_ipv6=1
     environment:
       SERVERNAME: ${PZ_SERVER_NAME:-ZomboidServer}
-      TZ: ${TZ:-Asia/Tbilisi}
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
       PZ_ADMIN_PASSWORD: ${PZ_ADMIN_PASSWORD:?PZ_ADMIN_PASSWORD must be set in .env}
       PZ_SERVER_PASSWORD: ${PZ_SERVER_PASSWORD:-}
       PZ_MAX_PLAYERS: ${PZ_MAX_PLAYERS:-16}
