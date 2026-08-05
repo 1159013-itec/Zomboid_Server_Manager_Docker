@@ -15,6 +15,37 @@ import {
 } from '@/components/ui/select';
 import type { BreadcrumbItem } from '@/types';
 
+function formatLogLine(line: string) {
+    const match = line.match(/^(\d{4}-\d{2}-\d{2}T[0-9:.]+(?:Z|[+-]\d{2}:\d{2}))\s*(.*)$/);
+
+    if (!match) {
+        return { timestamp: null, message: line };
+    }
+
+    const [, rawTimestamp, message] = match;
+    const date = new Date(rawTimestamp);
+
+    if (Number.isNaN(date.getTime())) {
+        return { timestamp: null, message: line };
+    }
+
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    });
+
+    return {
+        timestamp: formatter.format(date).replace(', ', ' '),
+        message: message.trim(),
+    };
+}
+
 export default function Logs({ lines: initialLines }: { lines: string[] }) {
     const { t } = useTranslation();
     const breadcrumbs: BreadcrumbItem[] = [
@@ -116,12 +147,21 @@ export default function Logs({ lines: initialLines }: { lines: string[] }) {
                             className="overflow-auto rounded-lg bg-zinc-950 p-4 font-mono text-xs leading-relaxed min-h-[500px] max-h-[70vh]"
                         >
                             {lines.length > 0 ? (
-                                lines.map((line, i) => (
-                                    <div key={i} className="text-zinc-300 hover:bg-zinc-900/50">
-                                        <span className="mr-3 select-none text-zinc-600">{i + 1}</span>
-                                        {line}
-                                    </div>
-                                ))
+                                lines.map((line, i) => {
+                                    const formattedLine = formatLogLine(line);
+
+                                    return (
+                                        <div key={i} className="text-zinc-300 hover:bg-zinc-900/50">
+                                            <span className="mr-3 select-none text-zinc-600">{i + 1}</span>
+                                            {formattedLine.timestamp ? (
+                                                <span className="mr-2 whitespace-nowrap text-emerald-400">
+                                                    {formattedLine.timestamp}
+                                                </span>
+                                            ) : null}
+                                            <span>{formattedLine.message}</span>
+                                        </div>
+                                    );
+                                })
                             ) : (
                                 <p className="text-zinc-500">{t('admin.logs.empty')}</p>
                             )}
