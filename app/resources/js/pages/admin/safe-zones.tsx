@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import {
     Table,
@@ -78,6 +79,7 @@ type Violation = {
 type Props = {
     config: SafeZoneConfig;
     violations: Violation[];
+    violationsLimit: number;
     mapConfig: MapConfig;
     hasTiles: boolean;
 };
@@ -86,7 +88,7 @@ const ZONE_COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec
 
 type ViolationSortKey = 'attacker' | 'strike_number' | 'occurred_at' | 'status';
 
-export default function SafeZones({ config, violations, mapConfig, hasTiles }: Props) {
+export default function SafeZones({ config, violations, violationsLimit, mapConfig, hasTiles }: Props) {
     const { t } = useTranslation();
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -102,6 +104,7 @@ export default function SafeZones({ config, violations, mapConfig, hasTiles }: P
     const [resolveNote, setResolveNote] = useState('');
     const [loading, setLoading] = useState(false);
     const [statusFilter, setStatusFilter] = useState<string>('pending');
+    const [violationsDisplayLimit, setViolationsDisplayLimit] = useState<number>(violationsLimit);
     const [drawingMode, setDrawingMode] = useState(false);
     const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
 
@@ -226,6 +229,12 @@ export default function SafeZones({ config, violations, mapConfig, hasTiles }: P
     }, [violations, statusFilter, vSortKey, vSortDir]);
 
     const pendingCount = violations.filter((v) => v.status === 'pending').length;
+
+    function handleViolationLimitChange(value: string) {
+        const nextLimit = Number(value);
+        setViolationsDisplayLimit(nextLimit);
+        router.get('/admin/safe-zones', { limit: nextLimit }, { preserveState: true, replace: true });
+    }
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -404,7 +413,24 @@ export default function SafeZones({ config, violations, mapConfig, hasTiles }: P
                                     {t('admin.safe_zones.violations_description')}
                                 </CardDescription>
                             </div>
-                            <div className="flex flex-wrap gap-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex items-center gap-2">
+                                    <Label htmlFor="violation-limit" className="text-sm text-muted-foreground">
+                                        {t('admin.safe_zones.limit_label')}
+                                    </Label>
+                                    <Select value={String(violationsDisplayLimit)} onValueChange={handleViolationLimitChange}>
+                                        <SelectTrigger id="violation-limit" className="w-[110px]">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {[100, 200, 500, 1000].map((value) => (
+                                                <SelectItem key={value} value={String(value)}>
+                                                    {value}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                                 {(['pending', 'actioned', 'dismissed', 'all'] as const).map((s) => (
                                     <Button
                                         key={s}

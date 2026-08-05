@@ -81,6 +81,8 @@ class SafeZoneManager
     public function importViolations(): int
     {
         try {
+            $this->deduplicateViolations();
+
             $data = $this->readJsonFile($this->violationsPath, ['violations' => []]);
             $violations = $data['violations'] ?? [];
 
@@ -90,7 +92,11 @@ class SafeZoneManager
 
             $count = 0;
             foreach ($violations as $v) {
-                PvpViolation::create([
+                $occurredAt = isset($v['occurred_at'])
+                    ? Carbon::createFromTimestamp($v['occurred_at'])
+                    : now();
+
+                $attributes = [
                     'attacker' => $v['attacker'] ?? 'unknown',
                     'victim' => $v['victim'] ?? 'unknown',
                     'zone_id' => $v['zone_id'] ?? '',
@@ -99,10 +105,23 @@ class SafeZoneManager
                     'attacker_y' => $v['attacker_y'] ?? null,
                     'strike_number' => (int) ($v['strike_number'] ?? 0),
                     'status' => 'pending',
-                    'occurred_at' => isset($v['occurred_at'])
-                        ? Carbon::createFromTimestamp($v['occurred_at'])
-                        : now(),
-                ]);
+                    'occurred_at' => $occurredAt,
+                ];
+
+                $existing = PvpViolation::query()
+                    ->where('attacker', $attributes['attacker'])
+                    ->where('victim', $attributes['victim'])
+                    ->where('zone_id', $attributes['zone_id'])
+                    ->where('zone_name', $attributes['zone_name'])
+                    ->where('strike_number', $attributes['strike_number'])
+                    ->where('occurred_at', $occurredAt)
+                    ->first();
+
+                if ($existing) {
+                    continue;
+                }
+
+                PvpViolation::create($attributes);
                 $count++;
             }
 
@@ -115,6 +134,46 @@ class SafeZoneManager
 
             return 0;
         }
+    }
+
+    /**
+     * Remove duplicate violation rows so each real violation is shown once.
+     */
+    public function deduplicateViolations(): int
+    {
+        $rows = PvpViolation::query()
+            ->select(['id', 'attacker', 'victim', 'zone_id', 'zone_name', 'strike_number', 'occurred_at'])
+            ->orderBy('occurred_at')
+            ->get();
+
+        $seen = [];
+        $toDelete = [];
+
+        foreach ($rows as $row) {
+            $fingerprint = implode('|', [
+                (string) $row->attacker,
+                (string) $row->victim,
+                (string) $row->zone_id,
+                (string) $row->zone_name,
+                (string) $row->strike_number,
+                (string) $row->occurred_at,
+            ]);
+
+            if (isset($seen[$fingerprint])) {
+                $toDelete[] = $row->id;
+                continue;
+            }
+
+            $seen[$fingerprint] = $row->id;
+        }
+
+        if ($toDelete === []) {
+            return 0;
+        }
+
+        PvpViolation::query()->whereIn('id', $toDelete)->delete();
+
+        return count($toDelete);
     }
 
     /**

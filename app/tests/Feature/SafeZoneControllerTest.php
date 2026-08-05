@@ -95,6 +95,38 @@ it('imports violations from JSON file into database', function () {
     rmdir($tempDir);
 });
 
+it('does not create duplicate violations when the same import is processed twice', function () {
+    $tempDir = sys_get_temp_dir().'/pz_safezone_feat2_'.getmypid();
+    mkdir($tempDir, 0755, true);
+    $violationsPath = $tempDir.'/safezone_violations.json';
+    $configPath = $tempDir.'/safezone_config.json';
+
+    $payload = [
+        'violations' => [[
+            'attacker' => 'Griefer',
+            'victim' => 'Victim1',
+            'zone_id' => 'spawn_sz',
+            'zone_name' => 'Spawn Zone',
+            'attacker_x' => 10050,
+            'attacker_y' => 10050,
+            'strike_number' => 2,
+            'occurred_at' => time(),
+        ]],
+    ];
+    file_put_contents($violationsPath, json_encode($payload));
+
+    $manager = new SafeZoneManager($configPath, $violationsPath);
+    $firstCount = $manager->importViolations();
+    $secondCount = $manager->importViolations();
+
+    expect($firstCount)->toBe(1)
+        ->and($secondCount)->toBe(0)
+        ->and(PvpViolation::count())->toBe(1);
+
+    array_map(fn ($f) => is_file($f) && unlink($f), glob($tempDir.'/*') ?: []);
+    rmdir($tempDir);
+});
+
 it('resolves a violation in database', function () {
     $tempDir = sys_get_temp_dir().'/pz_safezone_feat2_'.getmypid();
     mkdir($tempDir, 0755, true);
@@ -125,6 +157,19 @@ it('renders the safe zones page', function () {
         ->component('admin/safe-zones')
         ->has('config')
         ->has('violations')
+    );
+});
+
+it('uses the requested violation display limit from the query string', function () {
+    mockSafeZoneManager();
+    PvpViolation::factory()->count(5)->create();
+
+    $response = $this->actingAs(safeZoneAdmin())->get('/admin/safe-zones?limit=200');
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('admin/safe-zones')
+        ->where('violationsLimit', 200)
     );
 });
 

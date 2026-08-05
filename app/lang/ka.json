@@ -456,6 +456,7 @@
     "admin.safe_zones.filter_dismissed": "უარყოფილი",
     "admin.safe_zones.filter_pending": "მოლოდინში",
     "admin.safe_zones.kick_reason": "PvP დარღვევა უსაფრთხო ზონაში: :zone_name",
+    "admin.safe_zones.limit_label": "ჩვენება",
     "admin.safe_zones.name_label": "სახელი",
     "admin.safe_zones.name_placeholder": "სპავნის უსაფრთხო ზონა",
     "admin.safe_zones.no_violations": ":status დარღვევები ვერ მოიძებნა.",

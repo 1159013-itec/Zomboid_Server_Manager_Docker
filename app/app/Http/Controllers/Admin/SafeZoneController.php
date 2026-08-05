@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\IndexSafeZoneRequest;
 use App\Http\Requests\Admin\ResolveViolationRequest;
 use App\Http\Requests\Admin\StoreSafeZoneRequest;
 use App\Http\Requests\Admin\UpdateSafeZoneConfigRequest;
@@ -22,15 +23,19 @@ class SafeZoneController extends Controller
         private readonly MapConfigBuilder $mapConfigBuilder,
     ) {}
 
-    public function index(): Response
+    public function index(IndexSafeZoneRequest $request): Response
     {
         // Import any pending violations from Lua on page load
         $this->safeZoneManager->importViolations();
 
+        $this->safeZoneManager->deduplicateViolations();
+
+        $limit = (int) $request->validated('limit', 100);
+
         $config = $this->safeZoneManager->getConfig();
         $violations = PvpViolation::query()
             ->orderByDesc('occurred_at')
-            ->limit(100)
+            ->limit($limit)
             ->get();
 
         $mapConfig = $this->mapConfigBuilder->build();
@@ -38,6 +43,7 @@ class SafeZoneController extends Controller
         return Inertia::render('admin/safe-zones', [
             'config' => $config,
             'violations' => $violations,
+            'violationsLimit' => $limit,
             'mapConfig' => $mapConfig,
             'hasTiles' => $mapConfig['tileUrl'] !== null,
         ]);
