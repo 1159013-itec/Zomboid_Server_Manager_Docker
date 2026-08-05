@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\PvpViolation;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class SafeZoneManager
 {
@@ -79,35 +80,41 @@ class SafeZoneManager
      */
     public function importViolations(): int
     {
-        $data = $this->readJsonFile($this->violationsPath, ['violations' => []]);
-        $violations = $data['violations'] ?? [];
+        try {
+            $data = $this->readJsonFile($this->violationsPath, ['violations' => []]);
+            $violations = $data['violations'] ?? [];
 
-        if (empty($violations)) {
+            if (empty($violations)) {
+                return 0;
+            }
+
+            $count = 0;
+            foreach ($violations as $v) {
+                PvpViolation::create([
+                    'attacker' => $v['attacker'] ?? 'unknown',
+                    'victim' => $v['victim'] ?? 'unknown',
+                    'zone_id' => $v['zone_id'] ?? '',
+                    'zone_name' => $v['zone_name'] ?? 'unknown',
+                    'attacker_x' => $v['attacker_x'] ?? null,
+                    'attacker_y' => $v['attacker_y'] ?? null,
+                    'strike_number' => (int) ($v['strike_number'] ?? 0),
+                    'status' => 'pending',
+                    'occurred_at' => isset($v['occurred_at'])
+                        ? Carbon::createFromTimestamp($v['occurred_at'])
+                        : now(),
+                ]);
+                $count++;
+            }
+
+            // Clear the violations file after import
+            $this->writeJsonFileAtomic($this->violationsPath, ['violations' => []]);
+
+            return $count;
+        } catch (\Throwable $e) {
+            Log::warning('Failed to import safe zone violations.', ['exception' => $e->getMessage()]);
+
             return 0;
         }
-
-        $count = 0;
-        foreach ($violations as $v) {
-            PvpViolation::create([
-                'attacker' => $v['attacker'] ?? 'unknown',
-                'victim' => $v['victim'] ?? 'unknown',
-                'zone_id' => $v['zone_id'] ?? '',
-                'zone_name' => $v['zone_name'] ?? 'unknown',
-                'attacker_x' => $v['attacker_x'] ?? null,
-                'attacker_y' => $v['attacker_y'] ?? null,
-                'strike_number' => (int) ($v['strike_number'] ?? 0),
-                'status' => 'pending',
-                'occurred_at' => isset($v['occurred_at'])
-                    ? Carbon::createFromTimestamp($v['occurred_at'])
-                    : now(),
-            ]);
-            $count++;
-        }
-
-        // Clear the violations file after import
-        $this->writeJsonFileAtomic($this->violationsPath, ['violations' => []]);
-
-        return $count;
     }
 
     /**
@@ -158,17 +165,25 @@ class SafeZoneManager
     private function writeJsonFileAtomic(string $path, array $data): bool
     {
         $dir = dirname($path);
-        if (! is_dir($dir)) {
-            mkdir($dir, 0755, true);
+        if (! is_dir($dir) && ! @mkdir($dir, 0755, true) && ! is_dir($dir)) {
+            return false;
         }
 
         $tmpPath = $path.'.tmp.'.getmypid().'.'.bin2hex(random_bytes(4));
         $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
         if (file_put_contents($tmpPath, $json) === false) {
+            @unlink($tmpPath);
+
             return false;
         }
 
-        return rename($tmpPath, $path);
+        if (! @rename($tmpPath, $path)) {
+            @unlink($tmpPath);
+
+            return false;
+        }
+
+        return true;
     }
 }

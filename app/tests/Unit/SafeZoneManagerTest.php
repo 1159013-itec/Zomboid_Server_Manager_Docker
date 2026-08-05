@@ -1,6 +1,8 @@
 <?php
 
 use App\Services\SafeZoneManager;
+use ErrorException;
+use ReflectionMethod;
 
 beforeEach(function () {
     $this->tempDir = sys_get_temp_dir().'/pz_safezone_test_'.getmypid();
@@ -70,6 +72,26 @@ it('returns zero when no violations file exists', function () {
     $count = $this->manager->importViolations();
 
     expect($count)->toBe(0);
+});
+
+it('returns false instead of throwing when atomic write cannot be completed', function () {
+    $method = new ReflectionMethod(SafeZoneManager::class, 'writeJsonFileAtomic');
+    $method->setAccessible(true);
+
+    $path = $this->tempDir.'/blocked/safezone_config.json';
+    file_put_contents($this->tempDir.'/blocked', 'not-a-directory');
+
+    set_error_handler(function (int $severity, string $message): never {
+        throw new ErrorException($message, 0, $severity);
+    });
+
+    try {
+        $result = $method->invoke($this->manager, $path, ['enabled' => true]);
+
+        expect($result)->toBeFalse();
+    } finally {
+        restore_error_handler();
+    }
 });
 
 it('preserves zones when toggling enabled', function () {
