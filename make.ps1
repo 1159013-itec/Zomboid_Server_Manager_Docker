@@ -181,12 +181,16 @@ function Do-Migrate {
 
 function Do-Test {
     Assert-DockerEnvironment
+
+    Invoke-Compose @("exec", "-T", "app", "sh", "-lc", "if [ ! -x vendor/bin/pest ]; then composer install --no-interaction --prefer-dist; fi")
+
     # Create test DB if missing
     $check = docker exec -T pz-db psql -U zomboid -tc "SELECT 1 FROM pg_database WHERE datname='zomboid_test'" 2>$null
     if ($check -notmatch "1") {
         docker exec -T pz-db psql -U zomboid -c "CREATE DATABASE zomboid_test OWNER zomboid" 2>$null
     }
-    Invoke-Compose @("exec", "-e", "APP_ENV=testing", "-e", "APP_CONFIG_CACHE=/tmp/laravel-test-config.php", "-e", "DB_CONNECTION=pgsql", "-e", "DB_DATABASE=zomboid_test", "app", "php", "artisan", "test", "--compact")
+
+    Invoke-Compose @("exec", "-e", "APP_ENV=testing", "-e", "APP_CONFIG_CACHE=/tmp/laravel-test-config.php", "-e", "DB_CONNECTION=pgsql", "-e", "DB_DATABASE=zomboid_test", "app", "sh", "-lc", "php artisan config:clear --ansi && php artisan test --compact")
 }
 
 function Do-Exec {

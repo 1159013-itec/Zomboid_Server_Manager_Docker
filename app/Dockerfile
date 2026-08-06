@@ -36,7 +36,7 @@ WORKDIR /var/www/html
 
 # Copy composer files first for layer caching
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
+RUN composer install --no-scripts --prefer-dist
 
 # Install pzmap2dzi for map tile generation (pyclipper needs C++ compiler)
 RUN apk add --no-cache --virtual .pzmap-build-deps g++ python3-dev \
@@ -52,7 +52,7 @@ RUN npm ci
 COPY . .
 
 # Generate autoload & discover packages (purges dev-only providers from cache)
-RUN composer dump-autoload --optimize --no-dev \
+RUN composer dump-autoload --optimize \
     && APP_KEY=base64:dGVtcG9yYXJ5LWJ1aWxkLWtleS1mb3ItZG9ja2VyMTIzNA== \
        DB_CONNECTION=sqlite DB_DATABASE=":memory:" \
        php artisan package:discover --ansi

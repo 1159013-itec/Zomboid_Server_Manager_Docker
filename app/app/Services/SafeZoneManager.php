@@ -16,8 +16,8 @@ class SafeZoneManager
         ?string $configPath = null,
         ?string $violationsPath = null,
     ) {
-        $this->configPath = $configPath ?? config('zomboid.lua_bridge.safezone_config');
-        $this->violationsPath = $violationsPath ?? config('zomboid.lua_bridge.safezone_violations');
+        $this->configPath = $this->resolveConfigPath($configPath, 'zomboid.lua_bridge.safezone_config');
+        $this->violationsPath = $this->resolveConfigPath($violationsPath, 'zomboid.lua_bridge.safezone_violations');
     }
 
     /**
@@ -199,6 +199,29 @@ class SafeZoneManager
     /**
      * Read and decode a JSON file, returning default on failure.
      */
+    private function resolveConfigPath(?string $path, string $fallbackKey): string
+    {
+        if ($path !== null && $path !== '') {
+            return $path;
+        }
+
+        if (function_exists('app')) {
+            $container = app();
+            if ($container instanceof \Illuminate\Contracts\Container\Container && $container->bound('config')) {
+                $value = $container->make('config')->get($fallbackKey);
+                if (is_string($value) && $value !== '') {
+                    return $value;
+                }
+            }
+        }
+
+        return match ($fallbackKey) {
+            'zomboid.lua_bridge.safezone_config' => '/tmp/safezone_config.json',
+            'zomboid.lua_bridge.safezone_violations' => '/tmp/safezone_violations.json',
+            default => '/tmp/default.json',
+        };
+    }
+
     private function readJsonFile(string $path, array $default): array
     {
         if (! file_exists($path)) {
@@ -224,6 +247,14 @@ class SafeZoneManager
     private function writeJsonFileAtomic(string $path, array $data): bool
     {
         $dir = dirname($path);
+        if ($dir === '' || $dir === '.') {
+            return false;
+        }
+
+        if (is_file($dir)) {
+            return false;
+        }
+
         if (! is_dir($dir) && ! @mkdir($dir, 0755, true) && ! is_dir($dir)) {
             return false;
         }

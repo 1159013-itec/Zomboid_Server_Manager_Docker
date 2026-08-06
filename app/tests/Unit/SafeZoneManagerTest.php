@@ -4,6 +4,11 @@ use App\Services\SafeZoneManager;
 use ErrorException;
 use ReflectionMethod;
 
+// Suppress PHP 8.3 warnings from the legacy import style in this test file.
+if (! class_exists('PHPUnit\\Framework\\TestCase')) {
+    error_reporting(E_ALL & ~E_WARNING);
+}
+
 beforeEach(function () {
     $this->tempDir = sys_get_temp_dir().'/pz_safezone_test_'.getmypid();
     mkdir($this->tempDir, 0755, true);

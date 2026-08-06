@@ -25,6 +25,7 @@ function mockSafeZoneManager(array $config = ['enabled' => false, 'zones' => []]
     $manager->shouldReceive('addZone')->andReturn(true)->byDefault();
     $manager->shouldReceive('removeZone')->andReturn(true)->byDefault();
     $manager->shouldReceive('importViolations')->andReturn(0)->byDefault();
+    $manager->shouldReceive('deduplicateViolations')->andReturn(0)->byDefault();
     $manager->shouldReceive('resolveViolation')->andReturnUsing(function ($id, $status, $note, $resolvedBy) {
         $violation = PvpViolation::find($id);
         if ($violation) {
