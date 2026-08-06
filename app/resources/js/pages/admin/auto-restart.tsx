@@ -66,6 +66,7 @@ const TIMEZONE_OPTIONS = [
     'America/Chicago',
     'America/Los_Angeles',
     'Asia/Tokyo',
+    'Asia/Ho_Chi_Minh',
     'Australia/Sydney',
     'UTC',
 ] as const;
