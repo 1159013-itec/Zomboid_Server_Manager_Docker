@@ -3,6 +3,7 @@ import {
     Activity,
     Archive,
     Bell,
+    Bot,
     Coins,
     Crosshair,
     Languages,
@@ -114,6 +115,7 @@ export function AppSidebar() {
         label: t('nav.group.community'),
         items: [
             { title: t('nav.discord'), href: '/admin/discord', icon: Bell },
+            { title: t('nav.discord_bot'), href: '/admin/discord_bot', icon: Bot },
             { title: t('nav.audit_log'), href: '/admin/audit', icon: ScrollText },
             { title: t('nav.site_settings'), href: '/admin/site-settings', icon: Palette },
             { title: t('nav.translations'), href: '/admin/translations', icon: Languages },

@@ -101,6 +101,11 @@ Route::middleware(['auth', 'admin', 'throttle:admin'])->group(function () {
         Route::patch('discord', [Admin\DiscordWebhookController::class, 'update'])->name('discord.update');
         Route::post('discord/test', [Admin\DiscordWebhookController::class, 'test'])->name('discord.test');
 
+        // Discord Bot
+        Route::get('discord_bot', [Admin\DiscordBotController::class, 'index'])->name('discord_bot');
+        Route::patch('discord_bot', [Admin\DiscordBotController::class, 'update'])->name('discord_bot.update');
+        Route::post('discord_bot/test', [Admin\DiscordBotController::class, 'test'])->name('discord_bot.test');
+
         // Auto Restart
         Route::get('auto-restart', [Admin\AutoRestartController::class, 'index'])->name('auto-restart');
         Route::patch('auto-restart', [Admin\AutoRestartController::class, 'update'])->name('auto-restart.update');

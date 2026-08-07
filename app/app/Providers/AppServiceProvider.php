@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\AuditLog;
 use App\Observers\AuditLogObserver;
 use App\Services\AuditLogger;
+use App\Services\DiscordBotService;
 use App\Services\DiscordWebhookService;
 use App\Services\DockerManager;
 use App\Services\GameVersionReader;
@@ -47,6 +48,7 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(DiscordWebhookService::class);
+        $this->app->singleton(DiscordBotService::class);
 
         $this->app->singleton(GameVersionReader::class);
     }

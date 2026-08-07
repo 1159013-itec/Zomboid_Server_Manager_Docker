@@ -2,8 +2,10 @@
 
 namespace App\Observers;
 
+use App\Jobs\SendDiscordBotNotification;
 use App\Jobs\SendDiscordWebhookNotification;
 use App\Models\AuditLog;
+use App\Models\DiscordBotSetting;
 use App\Models\DiscordWebhookSetting;
 
 class AuditLogObserver
@@ -18,15 +20,25 @@ class AuditLogObserver
 
     public function created(AuditLog $auditLog): void
     {
-        $settings = DiscordWebhookSetting::instance();
+        $webhookSettings = DiscordWebhookSetting::instance();
 
-        if (! $settings->shouldNotify($auditLog->action)) {
-            return;
+        if ($webhookSettings->shouldNotify($auditLog->action)) {
+            SendDiscordWebhookNotification::dispatch(
+                $webhookSettings->webhook_url,
+                $auditLog->id,
+            );
         }
 
-        SendDiscordWebhookNotification::dispatch(
-            $settings->webhook_url,
-            $auditLog->id,
-        );
+        $botSettings = DiscordBotSetting::instance();
+
+        if ($botSettings->shouldNotify($auditLog->action)) {
+            SendDiscordBotNotification::dispatch(
+                $botSettings->bot_token,
+                $botSettings->channel_id,
+                $botSettings->thread_id,
+                $botSettings->role_ids ?? [],
+                $auditLog->id,
+            );
+        }
     }
 }
