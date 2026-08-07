@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * @property int $id
@@ -94,12 +93,12 @@ class SiteSetting extends Model
 
     public function logoUrl(): ?string
     {
-        return $this->logo_path ? Storage::disk('public')->url($this->logo_path) : null;
+        return $this->logo_path ? '/storage/' . $this->logo_path : null;
     }
 
     public function faviconUrl(): ?string
     {
-        return $this->favicon_path ? Storage::disk('public')->url($this->favicon_path) : null;
+        return $this->favicon_path ? '/storage/' . $this->favicon_path : null;
     }
 
     /**

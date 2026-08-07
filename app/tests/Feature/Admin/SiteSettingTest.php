@@ -57,6 +57,21 @@ describe('Site settings page', function () {
                 ->where('settings.footer_text', 'Custom Footer')
             );
     });
+
+    it('returns relative URLs for logo and favicon', function () {
+        SiteSetting::factory()->create([
+            'logo_path' => 'site/logo.png',
+            'favicon_path' => 'site/favicon.png',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.site-settings'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('settings.logo_url', '/storage/site/logo.png')
+                ->where('settings.favicon_url', '/storage/site/favicon.png')
+            );
+    });
 });
 
 // ── Settings update ──────────────────────────────────────────────────
@@ -131,6 +146,35 @@ describe('Site settings update', function () {
         $saved = SiteSetting::instance()->landing_sections;
         expect($saved)->toHaveCount(2);
         expect($saved[1]['enabled'])->toBeFalse();
+    });
+
+    it('casts string boolean values in landing sections from FormData', function () {
+        $sections = [
+            ['id' => 'hero', 'enabled' => '1', 'order' => 0],
+            ['id' => 'stats', 'enabled' => '0', 'order' => 1],
+            ['id' => 'top_players', 'enabled' => '1', 'order' => 2],
+            ['id' => 'features', 'enabled' => '0', 'order' => 3],
+        ];
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.site-settings.update'), [
+                'site_name' => 'Test',
+                'footer_text' => 'Test',
+                'hero_badge' => 'Test',
+                'hero_title' => 'Test',
+                'hero_subtitle' => 'Test',
+                'hero_description' => 'Test',
+                'hero_button_text' => 'Test',
+                'landing_sections' => $sections,
+            ])
+            ->assertOk();
+
+        $saved = SiteSetting::instance()->landing_sections;
+        expect($saved)->toHaveCount(4);
+        expect($saved[0]['enabled'])->toBeTrue();
+        expect($saved[1]['enabled'])->toBeFalse();
+        expect($saved[2]['enabled'])->toBeTrue();
+        expect($saved[3]['enabled'])->toBeFalse();
     });
 
     it('creates audit log on update', function () {

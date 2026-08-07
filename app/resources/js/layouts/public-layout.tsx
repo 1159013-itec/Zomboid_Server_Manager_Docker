@@ -90,9 +90,9 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                 <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
                     <Link href="/" className="flex items-center gap-2">
                         {site.logo_url ? (
-                            <img src={site.logo_url} alt={site.name} className="size-6 object-contain" />
+                            <img src={site.logo_url} alt={site.name} className="size-24 object-contain" />
                         ) : (
-                            <Skull className="size-6" />
+                            <Skull className="size-24" />
                         )}
                         <span className="text-lg font-semibold tracking-tight">{site.name}</span>
                     </Link>
@@ -123,9 +123,9 @@ export default function PublicLayout({ children }: PropsWithChildren) {
                         <SheetTitle>
                             <Link href="/" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
                                 {site.logo_url ? (
-                                    <img src={site.logo_url} alt={site.name} className="size-5 object-contain" />
+                                    <img src={site.logo_url} alt={site.name} className="size-24 object-contain" />
                                 ) : (
-                                    <Skull className="size-5" />
+                                    <Skull className="size-24" />
                                 )}
                                 <span className="font-semibold">{site.name}</span>
                             </Link>

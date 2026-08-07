@@ -92,7 +92,19 @@ class SiteSettingController extends Controller
 
         foreach ($jsonFields as $field) {
             if (array_key_exists($field, $validated)) {
-                $settings->{$field} = $validated[$field];
+                $value = $validated[$field];
+
+                // Normalize boolean values in landing_sections (FormData sends '1'/'0' as strings)
+                if ($field === 'landing_sections' && is_array($value)) {
+                    $value = array_map(function ($section) {
+                        if (isset($section['enabled'])) {
+                            $section['enabled'] = filter_var($section['enabled'], FILTER_VALIDATE_BOOLEAN);
+                        }
+                        return $section;
+                    }, $value);
+                }
+
+                $settings->{$field} = $value;
                 $changes[] = $field;
             }
         }
